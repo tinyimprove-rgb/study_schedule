@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Academic Study Planner</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       DESIGN TOKENS
+       ============================================================ */
+    :root {
+      --bg:            #f5f3ef;
+      --bg-card:       #ffffff;
+      --bg-muted:      #f0ede8;
+      --border:        #e2ddd6;
+      --border-strong: #c9c2b8;
+      --navy:          #1a2236;
+      --navy-mid:      #3d4d6a;
+      --navy-dim:      #7d8da8;
+      --gold:          #b5862a;
+      --gold-light:    #fdf5e3;
+      --gold-border:   #dfc080;
+      --green:         #2d6a4f;
+      --green-light:   #eaf4ef;
+      --green-border:  #95c9ae;
+      --blue:          #1d4e89;
+      --blue-light:    #e8f0f9;
+      --blue-border:   #90b8de;
+      --red:           #9b2226;
+      --red-light:     #faeaea;
+      --red-border:    #dc8080;
+      --teal:          #0d6e6e;
+      --teal-light:    #e0f4f4;
+      --teal-border:   #7fcfcf;
+      --purple:        #7b4ea6;
+      --purple-light:  #f2ecf9;
+      --purple-border: #c4a0e0;
+
+      --serif: 'Playfair Display', Georgia, serif;
+      --mono:  'DM Mono', 'Courier New', monospace;
+      --sans:  'DM Sans', sans-serif;
+      --radius-sm: 6px;
+      --radius-lg: 14px;
+      --shadow-sm: 0 1px 4px rgba(26,34,54,.06);
+      --shadow-md: 0 4px 28px rgba(26,34,54,.13);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--navy);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 2.5rem 1.25rem 5rem;
+    }
+
+    /* Ruled-paper texture */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: repeating-linear-gradient(
+        180deg,
+        transparent 0px, transparent 31px,
+        rgba(26,34,54,.04) 31px, rgba(26,34,54,.04) 32px
+      );
+      pointer-events: none; z-index: 0;
+    }
+
+    .app { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; }
+
+    /* Entrance animation */
+    .app > * { animation: fadeUp .4s ease both; }
+    .app > *:nth-child(1) { animation-delay: .00s; }
+    .app > *:nth-child(2) { animation-delay: .07s; }
+    .app > *:nth-child(3) { animation-delay: .12s; }
+    .app > *:nth-child(4) { animation-delay: .17s; }
+    .app > *:nth-child(5) { animation-delay: .22s; }
+    .app > *:nth-child(6) { animation-delay: .27s; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ============================================================
+       PAGE HEADER
+       ============================================================ */
+    .page-header {
+      display: flex; flex-wrap: wrap;
+      align-items: flex-start; justify-content: space-between;
+      gap: 1.5rem;
+      margin-bottom: 2.25rem;
+      padding-bottom: 1.75rem;
+      border-bottom: 2px solid var(--border-strong);
+    }
+
+    .page-header h1 {
+      font-family: var(--serif);
+      font-size: clamp(1.8rem, 4vw, 2.55rem);
+      font-weight: 700; letter-spacing: -.02em; line-height: 1.15;
+    }
+
+    .page-header h1 em { font-style: italic; color: var(--gold); }
+    .header-sub { margin-top: .4rem; font-size: .82rem; color: var(--navy-dim); font-weight: 300; }
+
+    .deadline-tag {
+      display: inline-flex; align-items: center; gap: .4rem;
+      margin-top: .65rem;
+      background: var(--gold-light); border: 1px solid var(--gold-border);
+      color: var(--gold); font-family: var(--mono); font-size: .68rem;
+      padding: .28rem .75rem; border-radius: 100px;
+    }
+
+    .header-date {
+      text-align: right; font-family: var(--mono);
+      font-size: .75rem; color: var(--navy-dim); line-height: 1.8;
+    }
+
+    /* ============================================================
+       CUMULATIVE PANEL  (counts down to Aug 15 — total program)
+       ============================================================ */
+    .cum-panel {
+      background: var(--navy);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 2.25rem;
+      display: flex; flex-wrap: wrap;
+      align-items: center; justify-content: space-between;
+      gap: 1.5rem; box-shadow: var(--shadow-md);
+    }
+
+    .cum-info-title {
+      font-family: var(--serif); font-size: 1.05rem;
+      font-weight: 600; color: rgba(255,255,255,.92);
+    }
+
+    .cum-info-sub { margin-top: .2rem; font-size: .75rem; color: rgba(255,255,255,.38); font-weight: 300; }
+
+    .cum-units { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+
+    .cum-unit { text-align: center; min-width: 60px; }
+
+    .cum-val {
+      display: block; font-family: var(--mono);
+      font-size: 2rem; font-weight: 500; color: #fff; line-height: 1;
+    }
+
+    .cum-lbl {
+      display: block; font-size: .58rem; text-transform: uppercase;
+      letter-spacing: .12em; color: rgba(255,255,255,.3); margin-top: .3rem;
+    }
+
+    .cum-sep {
+      font-family: var(--mono); font-size: 1.5rem;
+      color: rgba(255,255,255,.18); line-height: 1; padding-bottom: .55rem;
+    }
+
+    /* ============================================================
+       SECTION LABEL
+       ============================================================ */
+    .section-label {
+      font-family: var(--mono); font-size: .63rem; letter-spacing: .2em;
+      text-transform: uppercase; color: var(--navy-dim);
+      margin-bottom: 1rem; display: flex; align-items: center; gap: .75rem;
+    }
+    .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ============================================================
+       TIMELINE
+       ============================================================ */
+    .timeline-wrap { margin-bottom: 2.25rem; }
+
+    /* Outer track */
+    .timeline-track {
+      position: relative;
+      height: 36px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--bg-muted);
+      border: 1px solid var(--border);
+      display: flex;
+      margin-bottom: .75rem;
+    }
+
+    /* Each course segment inside the bar */
+    .tl-seg {
+      position: relative;
+      height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: .58rem; font-weight: 500;
+      color: rgba(255,255,255,.9);
+      cursor: default;
+      overflow: hidden;
+      white-space: nowrap;
+      transition: filter .2s;
+      border-right: 2px solid rgba(255,255,255,.25);
+    }
+    .tl-seg:last-child { border-right: none; }
+    .tl-seg:hover { filter: brightness(1.1); }
+    .tl-seg.done { opacity: .45; }
+
+    /* "Today" needle */
+    .tl-needle {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 2px;
+      background: #fff;
+      box-shadow: 0 0 4px rgba(0,0,0,.4);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .tl-needle::after {
+      content: 'Today';
+      position: absolute; top: -18px; left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--mono); font-size: .55rem;
+      color: var(--navy-mid);
+      white-space: nowrap;
+    }
+
+    /* Date labels below bar */
+    .tl-dates {
+      display: flex; justify-content: space-between;
+      font-family: var(--mono); font-size: .6rem; color: var(--navy-dim);
+      margin-bottom: .65rem;
+    }
+
+    /* Legend row */
+    .tl-legend { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; }
+    .tl-item   { display: flex; align-items: center; gap: .35rem; font-family: var(--mono); font-size: .62rem; color: var(--navy-dim); }
+    .tl-dot    { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ============================================================
+       COURSE CARDS
+       ============================================================ */
+    .courses { display: flex; flex-direction: column; gap: 1.1rem; margin-bottom: 2.25rem; }
+
+    .course-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.4rem 1.5rem 1.3rem 1.75rem;
+      box-shadow: var(--shadow-sm);
+      position: relative; overflow: hidden;
+      transition: box-shadow .25s, border-color .25s;
+    }
+
+    /* Left accent stripe */
+    .course-card::before {
+      content: '';
+      position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+      background: var(--border-strong);
+      border-radius: 4px 0 0 4px;
+    }
+
+    .course-card.active   { border-color: var(--gold-border); box-shadow: 0 2px 18px rgba(181,134,42,.14); }
+    .course-card.active::before   { background: var(--gold); }
+    .course-card.done::before     { background: var(--green); }
+    .course-card.upcoming::before { background: var(--blue); }
+    .course-card.overdue::before  { background: var(--red); }
+    .course-card.done { background: #fdfdfb; }
+
+    /* Card header */
+    .card-head { display: flex; align-items: flex-start; gap: .85rem; margin-bottom: .85rem; }
+
+    /* Checkbox */
+    .course-check {
+      appearance: none; -webkit-appearance: none;
+      width: 18px; height: 18px;
+      border: 1.5px solid var(--border-strong);
+      border-radius: 4px; cursor: pointer; flex-shrink: 0; margin-top: 4px;
+      transition: background .18s, border-color .18s; position: relative;
+    }
+    .course-check:checked { background: var(--green); border-color: var(--green); }
+    .course-check:checked::after {
+      content: ''; position: absolute; left: 4px; top: 1px;
+      width: 6px; height: 10px;
+      border: 2px solid #fff; border-top: none; border-left: none;
+      transform: rotate(45deg);
+    }
+
+    .card-title-wrap { flex: 1; }
+    .course-num { font-family: var(--mono); font-size: .6rem; letter-spacing: .08em; color: var(--navy-dim); margin-bottom: .15rem; }
+
+    .course-title {
+      font-family: var(--serif); font-size: 1.05rem; font-weight: 600;
+      color: var(--navy); line-height: 1.3; transition: color .2s;
+    }
+    .course-card.done .course-title { color: var(--navy-dim); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+
+    /* Badge */
+    .badge { font-family: var(--mono); font-size: .6rem; padding: .2rem .65rem; border-radius: 100px; white-space: nowrap; flex-shrink: 0; }
+    .badge-active   { background: var(--gold-light);   color: var(--gold);   border: 1px solid var(--gold-border); }
+    .badge-done     { background: var(--green-light);  color: var(--green);  border: 1px solid var(--green-border); }
+    .badge-upcoming { background: var(--blue-light);   color: var(--blue);   border: 1px solid var(--blue-border); }
+    .badge-overdue  { background: var(--red-light);    color: var(--red);    border: 1px solid var(--red-border); }
+
+    /* Meta row */
+    .card-meta {
+      display: flex; flex-wrap: wrap; align-items: center;
+      gap: .4rem .85rem; margin-bottom: 1rem;
+      font-family: var(--mono); font-size: .7rem; color: var(--navy-dim);
+    }
+    .meta-dates.shifted { color: var(--blue); }
+    .adj-tag {
+      background: var(--blue-light); color: var(--blue);
+      border: 1px solid var(--blue-border);
+      font-size: .58rem; padding: .14rem .5rem; border-radius: 100px;
+    }
+
+    /* ── Duration countdown ──────────────────────────────────────
+       Shows how much time is left in THIS course's window.
+       Window = effectiveStart (today if active, or future date if
+       upcoming) → effectiveEnd.
+       Each unit is independent (days / hrs 0-23 / min 0-59 / sec 0-59).
+    ─────────────────────────────────────────────────────────────── */
+    .dur-label {
+      font-family: var(--mono); font-size: .62rem;
+      color: var(--navy-dim); margin-bottom: .45rem;
+      letter-spacing: .05em;
+    }
+
+    .course-countdown {
+      display: flex; align-items: center; gap: .45rem; flex-wrap: wrap;
+    }
+
+    .cc-unit {
+      background: var(--bg-muted); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: .45rem .65rem;
+      text-align: center; min-width: 60px;
+    }
+    .course-card.active   .cc-unit { background: var(--gold-light);   border-color: var(--gold-border); }
+    .course-card.done     .cc-unit { background: var(--green-light);  border-color: var(--green-border); }
+    .course-card.upcoming .cc-unit { background: var(--blue-light);   border-color: var(--blue-border); }
+    .course-card.overdue  .cc-unit { background: var(--red-light);    border-color: var(--red-border); }
+
+    .cc-val {
+      display: block; font-family: var(--mono);
+      font-size: 1.3rem; font-weight: 500; color: var(--navy); line-height: 1;
+    }
+    .course-card.active   .cc-val { color: var(--gold); }
+    .course-card.done     .cc-val { color: var(--green); }
+    .course-card.upcoming .cc-val { color: var(--blue); }
+    .course-card.overdue  .cc-val { color: var(--red); }
+
+    .cc-lbl { display: block; font-size: .55rem; text-transform: uppercase; letter-spacing: .1em; color: var(--navy-dim); margin-top: .2rem; }
+    .cc-colon { font-family: var(--mono); font-size: 1rem; color: var(--border-strong); padding-bottom: .3rem; }
+
+    .note-done {
+      font-family: var(--mono); font-size: .73rem;
+      color: var(--green); background: var(--green-light);
+      border: 1px solid var(--green-border);
+      border-radius: var(--radius-sm); padding: .4rem .85rem; display: inline-block;
+    }
+    .note-expired {
+      font-family: var(--mono); font-size: .73rem;
+      color: var(--red); background: var(--red-light);
+      border: 1px solid var(--red-border);
+      border-radius: var(--radius-sm); padding: .4rem .85rem; display: inline-block;
+    }
+
+    /* Progress bar */
+    .progress-row { display: flex; align-items: center; gap: .75rem; margin-top: 1rem; }
+    .progress-track { flex: 1; height: 4px; background: var(--bg-muted); border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 4px; transition: width .5s ease; }
+    .course-card.active   .progress-fill { background: var(--gold); }
+    .course-card.done     .progress-fill { background: var(--green); }
+    .course-card.upcoming .progress-fill { background: var(--blue); }
+    .course-card.overdue  .progress-fill { background: var(--red); }
+    .progress-pct { font-family: var(--mono); font-size: .63rem; color: var(--navy-dim); min-width: 28px; text-align: right; }
+
+    /* ============================================================
+       STUDY TRACKER
+       ============================================================ */
+    .tracker {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.4rem 1.5rem;
+      box-shadow: var(--shadow-sm); margin-bottom: 2.25rem;
+    }
+    .tracker h2 { font-family: var(--serif); font-size: 1.1rem; font-weight: 600; color: var(--navy); margin-bottom: .2rem; }
+    .tracker-desc { font-size: .8rem; color: var(--navy-dim); font-weight: 300; margin-bottom: 1.2rem; }
+
+    .tracker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    @media (max-width: 500px) { .tracker-grid { grid-template-columns: 1fr; } }
+
+    .field-label { display: block; font-family: var(--mono); font-size: .63rem; letter-spacing: .13em; text-transform: uppercase; color: var(--navy-mid); margin-bottom: .4rem; }
+    .field-input {
+      width: 100%; background: var(--bg-muted); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: .58rem .85rem;
+      color: var(--navy); font-family: var(--mono); font-size: 1rem; font-weight: 500;
+      outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
+    }
+    .field-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(181,134,42,.11); background: #fff; }
+
+    .btn { font-family: var(--sans); font-size: .8rem; font-weight: 600; letter-spacing: .02em; padding: .55rem 1.2rem; border-radius: var(--radius-sm); border: none; cursor: pointer; transition: filter .15s, transform .1s; }
+    .btn:hover  { filter: brightness(.91); }
+    .btn:active { transform: scale(.98); }
+    .btn-primary { background: var(--navy); color: #fff; }
+    .btn-danger  { background: transparent; border: 1px solid var(--red-border); color: var(--red); }
+
+    .summary-row { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin-top: 1.25rem; padding-top: 1.1rem; border-top: 1px solid var(--border); }
+    .s-stat { line-height: 1.3; }
+    .s-val { display: block; font-family: var(--mono); font-size: 1.1rem; font-weight: 500; color: var(--navy); }
+    .s-lbl { font-size: .67rem; color: var(--navy-dim); }
+
+    /* ============================================================
+       FOOTER
+       ============================================================ */
+    footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+    .footer-text { font-family: var(--mono); font-size: .65rem; color: var(--navy-dim); line-height: 1.7; }
+
+    /* ============================================================
+       TOAST
+       ============================================================ */
+    #toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      background: var(--navy); color: #fff;
+      font-family: var(--mono); font-size: .72rem;
+      padding: .6rem 1.1rem; border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-md); opacity: 0; transform: translateY(6px);
+      transition: opacity .2s, transform .2s; pointer-events: none; z-index: 999;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- PAGE HEADER -->
+  <header class="page-header">
+    <div>
+      <h1>Academic<br><em>Study Planner</em></h1>
+      <p class="header-sub">Machine Learning &amp; Operations Research · 2026</p>
+      <div class="deadline-tag">⚑ Hard deadline: August 15, 2026</div>
+    </div>
+    <div class="header-date" id="headerDate">—</div>
+  </header>
+
+  <!-- CUMULATIVE: total program remaining -->
+  <section aria-label="Total program time remaining">
+    <div class="cum-panel">
+      <div>
+        <div class="cum-info-title">Total Program Time Remaining</div>
+        <div class="cum-info-sub">Cumulative countdown to August 15, 2026</div>
+      </div>
+      <div class="cum-units">
+        <div class="cum-unit"><span class="cum-val" id="cum-d">—</span><span class="cum-lbl">Days</span></div>
+        <div class="cum-sep">:</div>
+        <div class="cum-unit"><span class="cum-val" id="cum-h">—</span><span class="cum-lbl">Hours</span></div>
+        <div class="cum-sep">:</div>
+        <div class="cum-unit"><span class="cum-val" id="cum-m">—</span><span class="cum-lbl">Min</span></div>
+        <div class="cum-sep">:</div>
+        <div class="cum-unit"><span class="cum-val" id="cum-s">—</span><span class="cum-lbl">Sec</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TIMELINE -->
+  <section class="timeline-wrap" aria-label="Program timeline">
+    <p class="section-label">Program Timeline</p>
+    <div style="position:relative; margin-top:22px; margin-bottom:6px;">
+      <div class="timeline-track" id="timelineBar"></div>
+      <div class="tl-needle" id="tlNeedle" style="display:none"></div>
+    </div>
+    <div class="tl-dates" id="tlDates"></div>
+    <div class="tl-legend" id="tlLegend"></div>
+  </section>
+
+  <!-- COURSES -->
+  <section aria-label="Course list">
+    <p class="section-label">Courses</p>
+    <div class="courses" id="courseList"></div>
+  </section>
+
+  <!-- STUDY TRACKER -->
+  <section class="tracker" aria-label="Daily study log">
+    <h2>Daily Study Log</h2>
+    <p class="tracker-desc">Record today's hours — saved automatically to your browser.</p>
+    <div class="tracker-grid">
+      <div>
+        <label class="field-label" for="langHours">Language (hours)</label>
+        <input class="field-input" type="number" id="langHours" min="0" max="24" step="0.5" placeholder="0.0" />
+      </div>
+      <div>
+        <label class="field-label" for="pyHours">Python (hours)</label>
+        <input class="field-input" type="number" id="pyHours" min="0" max="24" step="0.5" placeholder="0.0" />
+      </div>
+    </div>
+    <button class="btn btn-primary" id="saveBtn">Save Today's Hours</button>
+    <div class="summary-row" id="summaryRow"></div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-text" id="lastSaved">No study data recorded yet.</div>
+    <button class="btn btn-danger" id="resetBtn">Reset All Data</button>
+  </footer>
+
+</div><!-- /.app -->
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ================================================================
+   BASE SCHEDULE
+   5 courses with fixed end dates (and fixed base-start dates).
+   The per-course COUNTDOWN shows: effectiveStart → effectiveEnd
+   where effectiveStart = max(today, dayAfter(prevCourse.effectiveEnd))
+   This means: "how many days/hrs/min/sec does this course's
+   window last FROM NOW (or from when it actually begins)?".
+   ================================================================ */
+
+const HARD_DEADLINE = new Date('2026-08-15T23:59:59');
+
+/*
+  baseEnd  = the originally scheduled end date.
+  baseStart = the originally scheduled start date (used for display
+              and for the timeline only; the live window always
+              anchors to today or the previous course's end).
+*/
+const BASE = [
+  {
+    id: 0,
+    title: 'Matrix Methods in Machine Learning',
+    baseStart: new Date('2026-04-03T00:00:00'),  // "today" in original plan
+    baseEnd:   new Date('2026-04-15T23:59:59'),
+    color: '#b5862a',   // gold
+  },
+  {
+    id: 1,
+    title: 'Statistical Learning',
+    baseStart: new Date('2026-04-16T00:00:00'),
+    baseEnd:   new Date('2026-05-05T23:59:59'),
+    color: '#1d4e89',   // blue
+  },
+  {
+    id: 2,
+    title: 'Machine Learning',
+    baseStart: new Date('2026-05-06T00:00:00'),
+    baseEnd:   new Date('2026-06-15T23:59:59'),
+    color: '#2d6a4f',   // green
+  },
+  {
+    id: 3,
+    title: 'Advanced ML / Topics in ML',
+    baseStart: new Date('2026-06-16T00:00:00'),
+    baseEnd:   new Date('2026-07-16T23:59:59'),
+    color: '#7b4ea6',   // purple
+  },
+  {
+    id: 4,
+    title: 'Operations Research',
+    baseStart: new Date('2026-07-17T00:00:00'),
+    baseEnd:   new Date('2026-08-15T23:59:59'),
+    color: '#0d6e6e',   // teal
+  },
+];
+
+/* ----------------------------------------------------------------
+   LOCAL STORAGE
+   ---------------------------------------------------------------- */
+const LS_COMPL = 'asp_completions_v4';
+const LS_LOG   = 'asp_studylog_v1';
+
+function loadCompletions() {
+  try {
+    const r = localStorage.getItem(LS_COMPL);
+    if (!r) return Array(5).fill(null);
+    const a = JSON.parse(r);
+    return Array.isArray(a) && a.length === 5 ? a : Array(5).fill(null);
+  } catch { return Array(5).fill(null); }
+}
+function saveCompletions(arr) { localStorage.setItem(LS_COMPL, JSON.stringify(arr)); }
+function loadLog() { try { return JSON.parse(localStorage.getItem(LS_LOG) || '{}'); } catch { return {}; } }
+function saveLog(log) { localStorage.setItem(LS_LOG, JSON.stringify(log)); }
+
+/* ----------------------------------------------------------------
+   SCHEDULE RECALCULATION
+   ──────────────────────────────────────────────────────────────
+   effectiveEnd:   shifts when previous course finishes late/early.
+   effectiveStart: the start of the COUNTDOWN window for this card.
+                   = today  (if the course is currently active or past)
+                   = dayAfter(prev.effectiveEnd)  (if course is upcoming)
+
+   The countdown for each card therefore shows:
+     "time remaining in this course's window FROM its start"
+     i.e.  effectiveEnd − effectiveStart
+   ---------------------------------------------------------------- */
+function recalc(completions) {
+  const now  = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // midnight today
+
+  const out = [];
+
+  for (let i = 0; i < BASE.length; i++) {
+    const b  = BASE[i];
+    const ca = completions[i] ? new Date(completions[i]) : null;
+
+    /* --- Compute effectiveEnd --- */
+    let effectiveEnd;
+    if (ca) {
+      // Already completed: end = actual completion time
+      effectiveEnd = new Date(ca);
+    } else if (i === 0) {
+      // First course: end doesn't shift (no predecessor)
+      effectiveEnd = new Date(b.baseEnd);
+    } else {
+      // Shift end by the same amount the start shifted
+      const prevEnd      = out[i - 1].effectiveEnd;
+      const prevBaseEnd  = BASE[i - 1].baseEnd;
+      const drift        = prevEnd - prevBaseEnd;          // ms ahead/behind schedule
+      effectiveEnd = new Date(b.baseEnd.getTime() + drift);
+    }
+
+    // Hard cap on last course
+    if (i === BASE.length - 1 && effectiveEnd > HARD_DEADLINE) {
+      effectiveEnd = new Date(HARD_DEADLINE);
+    }
+
+    /* --- Compute effectiveStart (start of the countdown window) --- */
+    let effectiveStart;
+    if (i === 0) {
+      // First course started on its base start (or today if we're past it)
+      effectiveStart = b.baseStart <= today ? new Date(today) : new Date(b.baseStart);
+    } else {
+      const prevEnd = out[i - 1].effectiveEnd;
+      // Day after prev course ended
+      const dayAfterPrev = new Date(prevEnd);
+      dayAfterPrev.setDate(dayAfterPrev.getDate() + 1);
+      dayAfterPrev.setHours(0, 0, 0, 0);
+
+      if (dayAfterPrev <= today) {
+        // This course's start has already passed — anchor to today
+        effectiveStart = new Date(today);
+      } else {
+        // Course hasn't started yet — starts the day after prev ends
+        effectiveStart = dayAfterPrev;
+      }
+    }
+
+    /* --- Status --- */
+    let status;
+    if (ca) {
+      status = 'done';
+    } else if (now < effectiveStart) {
+      status = 'upcoming';
+    } else if (now <= effectiveEnd) {
+      status = 'active';
+    } else {
+      status = 'overdue';
+    }
+
+    const shifted = Math.abs(effectiveEnd - b.baseEnd) > 60_000;
+
+    out.push({ ...b, effectiveStart, effectiveEnd, ca, status, shifted });
+  }
+
+  return out;
+}
+
+/* ----------------------------------------------------------------
+   TIME HELPERS
+   ---------------------------------------------------------------- */
+const p2 = n => String(Math.floor(Math.abs(n))).padStart(2, '0');
+
+/*
+  windowLeft(start, end)
+  ──────────────────────
+  Returns the independent components of (end − start):
+    days    = total whole days
+    hours   = leftover hours  (0–23)
+    minutes = leftover minutes (0–59)
+    seconds = leftover seconds (0–59)
+  This is the DURATION of the course window, NOT a running clock
+  from an arbitrary epoch.  If start >= end the window has expired.
+*/
+function windowLeft(startMs, endMs) {
+  const diff = endMs - startMs;
+  if (diff <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
+  const totalSec = Math.floor(diff / 1000);
+  return {
+    days:    Math.floor(totalSec / 86400),
+    hours:   Math.floor((totalSec % 86400) / 3600),
+    minutes: Math.floor((totalSec % 3600)  / 60),
+    seconds: totalSec % 60,
+    expired: false,
+  };
+}
+
+/*
+  timeLeft(target)
+  ─────────────────
+  Same but measures NOW → target  (used for cumulative panel).
+*/
+function timeLeft(target) {
+  return windowLeft(Date.now(), target.getTime());
+}
+
+const fmtDate  = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const fmtShort = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fmtFull  = d => d.toLocaleString   ('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+/* ----------------------------------------------------------------
+   RENDER — HEADER DATE
+   ---------------------------------------------------------------- */
+function renderHeaderDate() {
+  const n = new Date();
+  document.getElementById('headerDate').innerHTML =
+    n.toLocaleDateString('en-US', { weekday: 'long' }) + '<br>' +
+    n.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+/* ----------------------------------------------------------------
+   RENDER — CUMULATIVE (counts to hard deadline)
+   ---------------------------------------------------------------- */
+function renderCumulative() {
+  const t = timeLeft(HARD_DEADLINE);
+  document.getElementById('cum-d').textContent = p2(t.days);
+  document.getElementById('cum-h').textContent = p2(t.hours);
+  document.getElementById('cum-m').textContent = p2(t.minutes);
+  document.getElementById('cum-s').textContent = p2(t.seconds);
+}
+
+/* ----------------------------------------------------------------
+   RENDER — TIMELINE
+   ---------------------------------------------------------------- */
+function renderTimeline(schedule) {
+  const bar    = document.getElementById('timelineBar');
+  const legend = document.getElementById('tlLegend');
+  const dates  = document.getElementById('tlDates');
+  bar.innerHTML = legend.innerHTML = dates.innerHTML = '';
+
+  // Use base start/end for visual widths (so layout is stable)
+  const programStart = BASE[0].baseStart.getTime();
+  const programEnd   = HARD_DEADLINE.getTime();
+  const totalMs      = programEnd - programStart;
+
+  schedule.forEach((c, i) => {
+    // Width proportional to original course duration
+    const segDur = c.baseEnd.getTime() - c.baseStart.getTime();
+    const pct    = Math.max(3, (segDur / totalMs) * 100);
+
+    const seg = document.createElement('div');
+    seg.className = 'tl-seg' + (c.status === 'done' ? ' done' : '');
+    seg.style.cssText = `width:${pct}%;background:${c.color};`;
+    seg.title = `${c.title}\n${fmtShort(c.effectiveStart)} → ${fmtShort(c.effectiveEnd)}`;
+
+    // Short label inside the segment (hide if too narrow)
+    const label = document.createElement('span');
+    label.textContent = `C${i + 1}`;
+    label.style.cssText = 'pointer-events:none;overflow:hidden;text-overflow:ellipsis;padding:0 4px;';
+    seg.appendChild(label);
+    bar.appendChild(seg);
+
+    // Legend item
+    const li = document.createElement('div');
+    li.className = 'tl-item';
+    li.innerHTML = `<span class="tl-dot" style="background:${c.color}"></span>${c.title}`;
+    legend.appendChild(li);
+  });
+
+  // "Today" needle position
+  const now    = Date.now();
+  const needle = document.getElementById('tlNeedle');
+  if (now >= programStart && now <= programEnd) {
+    const pct = ((now - programStart) / totalMs) * 100;
+    needle.style.left    = `${pct}%`;
+    needle.style.display = 'block';
+  } else {
+    needle.style.display = 'none';
+  }
+
+  // Date labels
+  dates.innerHTML = `
+    <span>${fmtShort(BASE[0].baseStart)}</span>
+    <span>${fmtShort(HARD_DEADLINE)}</span>
+  `;
+}
+
+/* ----------------------------------------------------------------
+   RENDER — COURSE CARDS
+   ----------------------------------------------------------------
+   Each card's countdown = windowLeft(effectiveStart, effectiveEnd)
+   i.e. the total duration of this course's WINDOW from when it
+   starts (today for active/overdue; future date for upcoming).
+   ---------------------------------------------------------------- */
+function renderCourses(schedule, completions) {
+  const list = document.getElementById('courseList');
+  list.innerHTML = '';
+
+  schedule.forEach((c, i) => {
+    const card = document.createElement('article');
+    card.className = `course-card ${c.status}`;
+    card.setAttribute('aria-label', c.title);
+
+    const badges = {
+      active:   ['badge-active',   '▶ In Progress'],
+      done:     ['badge-done',     '✓ Completed'],
+      upcoming: ['badge-upcoming', '○ Upcoming'],
+      overdue:  ['badge-overdue',  '⚠ Overdue'],
+    };
+    const [bc, bt] = badges[c.status];
+
+    /* ── Per-course countdown ──
+       Shows the remaining window: effectiveStart → effectiveEnd
+       For active course: start = today (already in the past/now)
+       For upcoming:      start = future date
+       So the timer shows "how long this course lasts" from its
+       effective start, counting down in real time.             */
+    let cdHTML = '';
+    if (c.status === 'done') {
+      cdHTML = `<div class="note-done">✓ Completed — ${fmtFull(c.ca)}</div>`;
+    } else {
+      const t = windowLeft(c.effectiveStart.getTime(), c.effectiveEnd.getTime());
+      if (t.expired) {
+        cdHTML = `<div class="note-expired">⚠ Deadline has passed</div>`;
+      } else {
+        // Label differs: active = "time left in course", upcoming = "course duration"
+        const lbl = c.status === 'active'
+          ? 'Time remaining in this course'
+          : `Course duration (starts ${fmtShort(c.effectiveStart)})`;
+
+        cdHTML = `
+          <div class="dur-label">${lbl}</div>
+          <div class="course-countdown" id="ccd-${i}">
+            <div class="cc-unit"><span class="cc-val" id="ccd-${i}-d">${p2(t.days)}</span><span class="cc-lbl">Days</span></div>
+            <span class="cc-colon">:</span>
+            <div class="cc-unit"><span class="cc-val" id="ccd-${i}-h">${p2(t.hours)}</span><span class="cc-lbl">Hrs</span></div>
+            <span class="cc-colon">:</span>
+            <div class="cc-unit"><span class="cc-val" id="ccd-${i}-m">${p2(t.minutes)}</span><span class="cc-lbl">Min</span></div>
+            <span class="cc-colon">:</span>
+            <div class="cc-unit"><span class="cc-val" id="ccd-${i}-s">${p2(t.seconds)}</span><span class="cc-lbl">Sec</span></div>
+          </div>`;
+      }
+    }
+
+    /* Progress: how far through the window are we? */
+    const winTotal = c.effectiveEnd - c.effectiveStart;
+    const winElapsed = Date.now() - c.effectiveStart;
+    const pct = c.status === 'done'
+      ? 100
+      : Math.min(100, Math.max(0, Math.round((winElapsed / winTotal) * 100)));
+
+    card.innerHTML = `
+      <div class="card-head">
+        <input type="checkbox" class="course-check" data-idx="${i}"
+          ${c.status === 'done' ? 'checked' : ''}
+          aria-label="Mark '${c.title}' as completed" />
+        <div class="card-title-wrap">
+          <div class="course-num">Course ${String(i + 1).padStart(2, '0')} / 0${BASE.length}</div>
+          <h2 class="course-title">${c.title}</h2>
+        </div>
+        <span class="badge ${bc}">${bt}</span>
+      </div>
+
+      <div class="card-meta">
+        <span class="meta-dates${c.shifted ? ' shifted' : ''}">
+          ${fmtShort(c.effectiveStart)} → ${fmtDate(c.effectiveEnd)}
+        </span>
+        ${c.shifted ? `<span class="adj-tag">⟳ adjusted</span>` : ''}
+      </div>
+
+      ${cdHTML}
+
+      <div class="progress-row">
+        <div class="progress-track">
+          <div class="progress-fill" style="width:${pct}%"></div>
+        </div>
+        <span class="progress-pct">${pct}%</span>
+      </div>
+    `;
+
+    list.appendChild(card);
+  });
+
+  /* Checkbox listeners */
+  document.querySelectorAll('.course-check').forEach(cb => {
+    cb.addEventListener('change', e => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      completions[idx] = e.target.checked ? Date.now() : null;
+      saveCompletions(completions);
+      fullRender(completions);
+      showToast(e.target.checked ? `Course ${idx + 1} marked complete` : `Course ${idx + 1} unchecked`);
+    });
+  });
+}
+
+/* ----------------------------------------------------------------
+   TICK — every second, update all live timers without re-render
+   ---------------------------------------------------------------- */
+function tick(schedule) {
+  renderCumulative();
+
+  schedule.forEach((c, i) => {
+    if (c.status === 'done') return;
+    /*
+      For the active course: effectiveStart is "today midnight",
+      so as seconds pass effectiveStart stays fixed and effectiveEnd
+      moves closer → countdown decreases correctly.
+      For upcoming courses: both stay fixed until the day they start,
+      at which point fullRender is called (hourly) which reanchors
+      effectiveStart to today.
+    */
+    const t  = windowLeft(c.effectiveStart.getTime(), c.effectiveEnd.getTime());
+    const dEl = document.getElementById(`ccd-${i}-d`);
+    const hEl = document.getElementById(`ccd-${i}-h`);
+    const mEl = document.getElementById(`ccd-${i}-m`);
+    const sEl = document.getElementById(`ccd-${i}-s`);
+    if (dEl) dEl.textContent = p2(t.days);
+    if (hEl) hEl.textContent = p2(t.hours);
+    if (mEl) mEl.textContent = p2(t.minutes);
+    if (sEl) sEl.textContent = p2(t.seconds);
+  });
+}
+
+/* ----------------------------------------------------------------
+   STUDY LOG
+   ---------------------------------------------------------------- */
+function saveHours() {
+  const lang  = parseFloat(document.getElementById('langHours').value) || 0;
+  const py    = parseFloat(document.getElementById('pyHours').value)   || 0;
+  const today = new Date().toISOString().slice(0, 10);
+  const log   = loadLog();
+  log[today]  = { lang, py };
+  saveLog(log);
+  renderSummary(log);
+  document.getElementById('lastSaved').textContent = `Last saved: ${fmtFull(new Date())}`;
+  showToast('Hours saved');
+}
+
+function renderSummary(log) {
+  const today = new Date().toISOString().slice(0, 10);
+  const e = log[today] || { lang: 0, py: 0 };
+  document.getElementById('langHours').value = e.lang || '';
+  document.getElementById('pyHours').value   = e.py   || '';
+
+  const tL = Object.values(log).reduce((s, x) => s + (x.lang || 0), 0);
+  const tP = Object.values(log).reduce((s, x) => s + (x.py   || 0), 0);
+  const d  = Object.keys(log).length;
+
+  document.getElementById('summaryRow').innerHTML = `
+    <div class="s-stat"><span class="s-val">${e.lang}h</span><span class="s-lbl">Language today</span></div>
+    <div class="s-stat"><span class="s-val">${e.py}h</span><span class="s-lbl">Python today</span></div>
+    <div class="s-stat"><span class="s-val">${tL}h</span><span class="s-lbl">Language total</span></div>
+    <div class="s-stat"><span class="s-val">${tP}h</span><span class="s-lbl">Python total</span></div>
+    <div class="s-stat"><span class="s-val">${d}</span><span class="s-lbl">Days logged</span></div>
+  `;
+}
+
+/* ----------------------------------------------------------------
+   RESET
+   ---------------------------------------------------------------- */
+function resetAll() {
+  if (!confirm('Clear all course statuses and study log? This cannot be undone.')) return;
+  localStorage.removeItem(LS_COMPL);
+  localStorage.removeItem(LS_LOG);
+  document.getElementById('langHours').value = '';
+  document.getElementById('pyHours').value   = '';
+  document.getElementById('lastSaved').textContent = 'No study data recorded yet.';
+  fullRender(Array(5).fill(null));
+  showToast('All data cleared');
+}
+
+/* ----------------------------------------------------------------
+   TOAST
+   ---------------------------------------------------------------- */
+let _tt;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(_tt);
+  _tt = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ----------------------------------------------------------------
+   FULL RENDER
+   ---------------------------------------------------------------- */
+let _schedule = null;
+
+function fullRender(completions) {
+  _schedule = recalc(completions);
+  renderHeaderDate();
+  renderTimeline(_schedule);
+  renderCourses(_schedule, completions);
+  renderSummary(loadLog());
+  renderCumulative();
+}
+
+/* ----------------------------------------------------------------
+   INIT
+   ---------------------------------------------------------------- */
+(function init() {
+  const completions = loadCompletions();
+  fullRender(completions);
+
+  const log = loadLog();
+  const dates = Object.keys(log).sort();
+  if (dates.length) {
+    document.getElementById('lastSaved').textContent = `Last logged: ${dates[dates.length - 1]}`;
+  }
+
+  document.getElementById('saveBtn').addEventListener('click', saveHours);
+  document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+  let _as;
+  ['langHours', 'pyHours'].forEach(id =>
+    document.getElementById(id).addEventListener('input', () => {
+      clearTimeout(_as); _as = setTimeout(saveHours, 800);
+    })
+  );
+
+  // Tick every second
+  setInterval(() => { if (_schedule) tick(_schedule); }, 1000);
+
+  // Full re-render every hour (handles midnight date rollovers)
+  setInterval(() => fullRender(loadCompletions()), 3_600_000);
+})();
+</script>
+</body>
+</html>
