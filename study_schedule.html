@@ -510,64 +510,39 @@
 
 <script>
 /* ================================================================
-   BASE SCHEDULE
-   5 courses with fixed end dates (and fixed base-start dates).
-   The per-course COUNTDOWN shows: effectiveStart → effectiveEnd
-   where effectiveStart = max(today, dayAfter(prevCourse.effectiveEnd))
-   This means: "how many days/hrs/min/sec does this course's
-   window last FROM NOW (or from when it actually begins)?".
+   BASE SCHEDULE — durations are the source of truth
+   ──────────────────────────────────────────────────────────────
+   RULES:
+   • Each course has a fixed DURATION in days.
+   • Course 0 starts today (or its original start if in the future).
+   • Each course starts the day after the previous one ends.
+   • If a course finishes early or late, ALL subsequent courses
+     shift their start AND end dates by the same delta.
+   • The ONLY fixed thing is the last course's END = Aug 15.
+     The last course stretches/shrinks to absorb all accumulated
+     slack — its start shifts like all others, its end stays Aug 15.
    ================================================================ */
 
 const HARD_DEADLINE = new Date('2026-08-15T23:59:59');
 
-/*
-  baseEnd  = the originally scheduled end date.
-  baseStart = the originally scheduled start date (used for display
-              and for the timeline only; the live window always
-              anchors to today or the previous course's end).
-*/
+// Durations in days (inclusive: end - start + 1)
 const BASE = [
-  {
-    id: 0,
-    title: 'Matrix Methods in Machine Learning',
-    baseStart: new Date('2026-04-03T00:00:00'),  // "today" in original plan
-    baseEnd:   new Date('2026-04-15T23:59:59'),
-    color: '#b5862a',   // gold
-  },
-  {
-    id: 1,
-    title: 'Statistical Learning',
-    baseStart: new Date('2026-04-16T00:00:00'),
-    baseEnd:   new Date('2026-05-05T23:59:59'),
-    color: '#1d4e89',   // blue
-  },
-  {
-    id: 2,
-    title: 'Machine Learning',
-    baseStart: new Date('2026-05-06T00:00:00'),
-    baseEnd:   new Date('2026-06-15T23:59:59'),
-    color: '#2d6a4f',   // green
-  },
-  {
-    id: 3,
-    title: 'Advanced ML / Topics in ML',
-    baseStart: new Date('2026-06-16T00:00:00'),
-    baseEnd:   new Date('2026-07-16T23:59:59'),
-    color: '#7b4ea6',   // purple
-  },
-  {
-    id: 4,
-    title: 'Operations Research',
-    baseStart: new Date('2026-07-17T00:00:00'),
-    baseEnd:   new Date('2026-08-15T23:59:59'),
-    color: '#0d6e6e',   // teal
-  },
+  { id:0, title:'Matrix Methods in Machine Learning', durationDays:11, color:'#b5862a' },
+  { id:1, title:'Statistical Learning',               durationDays:20, color:'#1d4e89' },
+  { id:2, title:'Machine Learning',                   durationDays:41, color:'#2d6a4f' },
+  { id:3, title:'Advanced ML / Topics in ML',         durationDays:31, color:'#7b4ea6' },
+  { id:4, title:'Operations Research',                durationDays:30, color:'#0d6e6e' },
 ];
+
+// Original schedule anchor: course 0 starts Apr 5
+const ORIGINAL_START = new Date('2026-04-05T00:00:00');
+
+const DAY_MS = 86_400_000;
 
 /* ----------------------------------------------------------------
    LOCAL STORAGE
    ---------------------------------------------------------------- */
-const LS_COMPL = 'asp_completions_v4';
+const LS_COMPL = 'asp_completions_v6';
 const LS_LOG   = 'asp_studylog_v1';
 
 function loadCompletions() {
@@ -583,20 +558,37 @@ function loadLog() { try { return JSON.parse(localStorage.getItem(LS_LOG) || '{}
 function saveLog(log) { localStorage.setItem(LS_LOG, JSON.stringify(log)); }
 
 /* ----------------------------------------------------------------
+   HELPERS
+   ---------------------------------------------------------------- */
+// Returns midnight of the date d
+function midnight(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+// Add N whole days to a date, returns a new Date at 23:59:59 of that day
+function addDaysEnd(base, n) {
+  const d = new Date(base.getTime() + n * DAY_MS);
+  d.setHours(23, 59, 59, 0);
+  return d;
+}
+// Add N whole days to a date, returns a new Date at 00:00:00 of that day
+function addDaysStart(base, n) {
+  const d = new Date(base.getTime() + n * DAY_MS);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/* ----------------------------------------------------------------
    SCHEDULE RECALCULATION
    ──────────────────────────────────────────────────────────────
-   effectiveEnd:   shifts when previous course finishes late/early.
-   effectiveStart: the start of the COUNTDOWN window for this card.
-                   = today  (if the course is currently active or past)
-                   = dayAfter(prev.effectiveEnd)  (if course is upcoming)
-
-   The countdown for each card therefore shows:
-     "time remaining in this course's window FROM its start"
-     i.e.  effectiveEnd − effectiveStart
+   Walk courses 0-4 in order.
+   Each course's effectiveStart = day after prev course actually ended.
+   "Actually ended" = completionDate if done, else effectiveEnd of that course.
+   Each course's effectiveEnd   = effectiveStart + durationDays - 1  (at 23:59:59)
+   EXCEPT last course: effectiveEnd = HARD_DEADLINE (Aug 15) always.
    ---------------------------------------------------------------- */
 function recalc(completions) {
-  const now  = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // midnight today
+  const now   = new Date();
+  const today = midnight(now);
 
   const out = [];
 
@@ -604,49 +596,31 @@ function recalc(completions) {
     const b  = BASE[i];
     const ca = completions[i] ? new Date(completions[i]) : null;
 
-    /* --- Compute effectiveEnd --- */
-    let effectiveEnd;
-    if (ca) {
-      // Already completed: end = actual completion time
-      effectiveEnd = new Date(ca);
-    } else if (i === 0) {
-      // First course: end doesn't shift (no predecessor)
-      effectiveEnd = new Date(b.baseEnd);
+    // ── effectiveStart ────────────────────────────────────────
+    let effectiveStart;
+    if (i === 0) {
+      // Course 0: start at whichever is later — original start or today
+      const origStart = midnight(ORIGINAL_START);
+      effectiveStart  = today >= origStart ? new Date(today) : new Date(origStart);
     } else {
-      // Shift end by the same amount the start shifted
-      const prevEnd      = out[i - 1].effectiveEnd;
-      const prevBaseEnd  = BASE[i - 1].baseEnd;
-      const drift        = prevEnd - prevBaseEnd;          // ms ahead/behind schedule
-      effectiveEnd = new Date(b.baseEnd.getTime() + drift);
+      // Day after the previous course actually ended
+      const prev = out[i - 1];
+      // "Actual end" of previous: if completed, use that timestamp; else its effectiveEnd
+      const prevActualEnd = prev.ca ? midnight(prev.ca) : midnight(prev.effectiveEnd);
+      effectiveStart = addDaysStart(prevActualEnd, 1);
     }
 
-    // Hard cap on last course
-    if (i === BASE.length - 1 && effectiveEnd > HARD_DEADLINE) {
+    // ── effectiveEnd ──────────────────────────────────────────
+    let effectiveEnd;
+    if (i < BASE.length - 1) {
+      // Courses 0-3: end = start + duration - 1
+      effectiveEnd = addDaysEnd(effectiveStart, b.durationDays - 1);
+    } else {
+      // Last course: end is always the hard deadline
       effectiveEnd = new Date(HARD_DEADLINE);
     }
 
-    /* --- Compute effectiveStart (start of the countdown window) --- */
-    let effectiveStart;
-    if (i === 0) {
-      // First course started on its base start (or today if we're past it)
-      effectiveStart = b.baseStart <= today ? new Date(today) : new Date(b.baseStart);
-    } else {
-      const prevEnd = out[i - 1].effectiveEnd;
-      // Day after prev course ended
-      const dayAfterPrev = new Date(prevEnd);
-      dayAfterPrev.setDate(dayAfterPrev.getDate() + 1);
-      dayAfterPrev.setHours(0, 0, 0, 0);
-
-      if (dayAfterPrev <= today) {
-        // This course's start has already passed — anchor to today
-        effectiveStart = new Date(today);
-      } else {
-        // Course hasn't started yet — starts the day after prev ends
-        effectiveStart = dayAfterPrev;
-      }
-    }
-
-    /* --- Status --- */
+    // ── Status ───────────────────────────────────────────────
     let status;
     if (ca) {
       status = 'done';
@@ -658,7 +632,11 @@ function recalc(completions) {
       status = 'overdue';
     }
 
-    const shifted = Math.abs(effectiveEnd - b.baseEnd) > 60_000;
+    // Shifted = start differs from the original schedule
+    const origStart = i === 0
+      ? midnight(ORIGINAL_START)
+      : addDaysStart(midnight(ORIGINAL_START), BASE.slice(0,i).reduce((s,x)=>s+x.durationDays,0));
+    const shifted = Math.abs(effectiveStart - origStart) > 60_000;
 
     out.push({ ...b, effectiveStart, effectiveEnd, ca, status, shifted });
   }
@@ -671,42 +649,36 @@ function recalc(completions) {
    ---------------------------------------------------------------- */
 const p2 = n => String(Math.floor(Math.abs(n))).padStart(2, '0');
 
-/*
-  windowLeft(start, end)
-  ──────────────────────
-  Returns the independent components of (end − start):
-    days    = total whole days
-    hours   = leftover hours  (0–23)
-    minutes = leftover minutes (0–59)
-    seconds = leftover seconds (0–59)
-  This is the DURATION of the course window, NOT a running clock
-  from an arbitrary epoch.  If start >= end the window has expired.
-*/
-function windowLeft(startMs, endMs) {
-  const diff = endMs - startMs;
-  if (diff <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
-  const totalSec = Math.floor(diff / 1000);
+function msToComponents(ms) {
+  if (ms <= 0) return { days:0, hours:0, minutes:0, seconds:0, expired:true };
+  const totalSec = Math.floor(ms / 1000);
   return {
     days:    Math.floor(totalSec / 86400),
     hours:   Math.floor((totalSec % 86400) / 3600),
-    minutes: Math.floor((totalSec % 3600)  / 60),
+    minutes: Math.floor((totalSec % 3600) / 60),
     seconds: totalSec % 60,
     expired: false,
   };
 }
 
-/*
-  timeLeft(target)
-  ─────────────────
-  Same but measures NOW → target  (used for cumulative panel).
+/* Course countdown:
+   - upcoming : full window duration = effectiveEnd − effectiveStart (static)
+   - active   : remaining            = effectiveEnd − NOW            (live)
 */
-function timeLeft(target) {
-  return windowLeft(Date.now(), target.getTime());
+function courseTimeLeft(course) {
+  if (course.status === 'upcoming') {
+    return msToComponents(course.effectiveEnd.getTime() - course.effectiveStart.getTime());
+  }
+  return msToComponents(course.effectiveEnd.getTime() - Date.now());
 }
 
-const fmtDate  = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-const fmtShort = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-const fmtFull  = d => d.toLocaleString   ('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+function programTimeLeft() {
+  return msToComponents(HARD_DEADLINE.getTime() - Date.now());
+}
+
+const fmtDate  = d => d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+const fmtShort = d => d.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+const fmtFull  = d => d.toLocaleString   ('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
 /* ----------------------------------------------------------------
    RENDER — HEADER DATE
@@ -714,15 +686,15 @@ const fmtFull  = d => d.toLocaleString   ('en-US', { month: 'short', day: 'numer
 function renderHeaderDate() {
   const n = new Date();
   document.getElementById('headerDate').innerHTML =
-    n.toLocaleDateString('en-US', { weekday: 'long' }) + '<br>' +
-    n.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    n.toLocaleDateString('en-US', { weekday:'long' }) + '<br>' +
+    n.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
 }
 
 /* ----------------------------------------------------------------
-   RENDER — CUMULATIVE (counts to hard deadline)
+   RENDER — CUMULATIVE
    ---------------------------------------------------------------- */
 function renderCumulative() {
-  const t = timeLeft(HARD_DEADLINE);
+  const t = programTimeLeft();
   document.getElementById('cum-d').textContent = p2(t.days);
   document.getElementById('cum-h').textContent = p2(t.hours);
   document.getElementById('cum-m').textContent = p2(t.minutes);
@@ -738,59 +710,44 @@ function renderTimeline(schedule) {
   const dates  = document.getElementById('tlDates');
   bar.innerHTML = legend.innerHTML = dates.innerHTML = '';
 
-  // Use base start/end for visual widths (so layout is stable)
-  const programStart = BASE[0].baseStart.getTime();
+  const programStart = schedule[0].effectiveStart.getTime();
   const programEnd   = HARD_DEADLINE.getTime();
   const totalMs      = programEnd - programStart;
 
   schedule.forEach((c, i) => {
-    // Width proportional to original course duration
-    const segDur = c.baseEnd.getTime() - c.baseStart.getTime();
-    const pct    = Math.max(3, (segDur / totalMs) * 100);
+    const segMs = c.effectiveEnd.getTime() - c.effectiveStart.getTime();
+    const pct   = Math.max(3, (segMs / totalMs) * 100);
 
     const seg = document.createElement('div');
     seg.className = 'tl-seg' + (c.status === 'done' ? ' done' : '');
     seg.style.cssText = `width:${pct}%;background:${c.color};`;
     seg.title = `${c.title}\n${fmtShort(c.effectiveStart)} → ${fmtShort(c.effectiveEnd)}`;
-
-    // Short label inside the segment (hide if too narrow)
-    const label = document.createElement('span');
-    label.textContent = `C${i + 1}`;
-    label.style.cssText = 'pointer-events:none;overflow:hidden;text-overflow:ellipsis;padding:0 4px;';
-    seg.appendChild(label);
+    const lbl = document.createElement('span');
+    lbl.textContent = `C${i+1}`;
+    lbl.style.cssText = 'pointer-events:none;overflow:hidden;text-overflow:ellipsis;padding:0 4px;';
+    seg.appendChild(lbl);
     bar.appendChild(seg);
 
-    // Legend item
     const li = document.createElement('div');
     li.className = 'tl-item';
     li.innerHTML = `<span class="tl-dot" style="background:${c.color}"></span>${c.title}`;
     legend.appendChild(li);
   });
 
-  // "Today" needle position
-  const now    = Date.now();
+  const now = Date.now();
   const needle = document.getElementById('tlNeedle');
   if (now >= programStart && now <= programEnd) {
-    const pct = ((now - programStart) / totalMs) * 100;
-    needle.style.left    = `${pct}%`;
+    needle.style.left    = `${((now - programStart) / totalMs) * 100}%`;
     needle.style.display = 'block';
   } else {
     needle.style.display = 'none';
   }
 
-  // Date labels
-  dates.innerHTML = `
-    <span>${fmtShort(BASE[0].baseStart)}</span>
-    <span>${fmtShort(HARD_DEADLINE)}</span>
-  `;
+  dates.innerHTML = `<span>${fmtShort(schedule[0].effectiveStart)}</span><span>${fmtShort(HARD_DEADLINE)}</span>`;
 }
 
 /* ----------------------------------------------------------------
    RENDER — COURSE CARDS
-   ----------------------------------------------------------------
-   Each card's countdown = windowLeft(effectiveStart, effectiveEnd)
-   i.e. the total duration of this course's WINDOW from when it
-   starts (today for active/overdue; future date for upcoming).
    ---------------------------------------------------------------- */
 function renderCourses(schedule, completions) {
   const list = document.getElementById('courseList');
@@ -809,25 +766,17 @@ function renderCourses(schedule, completions) {
     };
     const [bc, bt] = badges[c.status];
 
-    /* ── Per-course countdown ──
-       Shows the remaining window: effectiveStart → effectiveEnd
-       For active course: start = today (already in the past/now)
-       For upcoming:      start = future date
-       So the timer shows "how long this course lasts" from its
-       effective start, counting down in real time.             */
     let cdHTML = '';
     if (c.status === 'done') {
       cdHTML = `<div class="note-done">✓ Completed — ${fmtFull(c.ca)}</div>`;
     } else {
-      const t = windowLeft(c.effectiveStart.getTime(), c.effectiveEnd.getTime());
+      const t = courseTimeLeft(c);
       if (t.expired) {
         cdHTML = `<div class="note-expired">⚠ Deadline has passed</div>`;
       } else {
-        // Label differs: active = "time left in course", upcoming = "course duration"
         const lbl = c.status === 'active'
           ? 'Time remaining in this course'
-          : `Course duration (starts ${fmtShort(c.effectiveStart)})`;
-
+          : `Course duration — starts ${fmtShort(c.effectiveStart)}`;
         cdHTML = `
           <div class="dur-label">${lbl}</div>
           <div class="course-countdown" id="ccd-${i}">
@@ -836,18 +785,29 @@ function renderCourses(schedule, completions) {
             <div class="cc-unit"><span class="cc-val" id="ccd-${i}-h">${p2(t.hours)}</span><span class="cc-lbl">Hrs</span></div>
             <span class="cc-colon">:</span>
             <div class="cc-unit"><span class="cc-val" id="ccd-${i}-m">${p2(t.minutes)}</span><span class="cc-lbl">Min</span></div>
-            <span class="cc-colon">:</span>
-            <div class="cc-unit"><span class="cc-val" id="ccd-${i}-s">${p2(t.seconds)}</span><span class="cc-lbl">Sec</span></div>
           </div>`;
       }
     }
 
-    /* Progress: how far through the window are we? */
-    const winTotal = c.effectiveEnd - c.effectiveStart;
+    const winTotal   = c.effectiveEnd - c.effectiveStart;
     const winElapsed = Date.now() - c.effectiveStart;
     const pct = c.status === 'done'
       ? 100
       : Math.min(100, Math.max(0, Math.round((winElapsed / winTotal) * 100)));
+
+    // Shift note for last course
+    let shiftNote = '';
+    if (i === BASE.length - 1 && c.shifted) {
+      const origLastStart = addDaysStart(midnight(ORIGINAL_START), BASE.slice(0,4).reduce((s,x)=>s+x.durationDays,0));
+      const diffDays = Math.round((c.effectiveStart - origLastStart) / DAY_MS);
+      if (diffDays < 0) shiftNote = `<span class="adj-tag">+${Math.abs(diffDays)}d bonus</span>`;
+      if (diffDays > 0) shiftNote = `<span class="adj-tag" style="background:var(--red-light);color:var(--red);border-color:var(--red-border)">−${diffDays}d reduced</span>`;
+    } else if (c.shifted) {
+      const origS = addDaysStart(midnight(ORIGINAL_START), BASE.slice(0,i).reduce((s,x)=>s+x.durationDays,0));
+      const diffDays = Math.round((c.effectiveStart - origS) / DAY_MS);
+      if (diffDays < 0) shiftNote = `<span class="adj-tag">${Math.abs(diffDays)}d early</span>`;
+      if (diffDays > 0) shiftNote = `<span class="adj-tag" style="background:var(--red-light);color:var(--red);border-color:var(--red-border)">${diffDays}d late</span>`;
+    }
 
     card.innerHTML = `
       <div class="card-head">
@@ -855,21 +815,16 @@ function renderCourses(schedule, completions) {
           ${c.status === 'done' ? 'checked' : ''}
           aria-label="Mark '${c.title}' as completed" />
         <div class="card-title-wrap">
-          <div class="course-num">Course ${String(i + 1).padStart(2, '0')} / 0${BASE.length}</div>
+          <div class="course-num">Course ${String(i+1).padStart(2,'0')} / 05</div>
           <h2 class="course-title">${c.title}</h2>
         </div>
         <span class="badge ${bc}">${bt}</span>
       </div>
-
       <div class="card-meta">
-        <span class="meta-dates${c.shifted ? ' shifted' : ''}">
-          ${fmtShort(c.effectiveStart)} → ${fmtDate(c.effectiveEnd)}
-        </span>
-        ${c.shifted ? `<span class="adj-tag">⟳ adjusted</span>` : ''}
+        <span class="meta-dates${c.shifted ? ' shifted' : ''}">${fmtShort(c.effectiveStart)} → ${fmtDate(c.effectiveEnd)}</span>
+        ${shiftNote}
       </div>
-
       ${cdHTML}
-
       <div class="progress-row">
         <div class="progress-track">
           <div class="progress-fill" style="width:${pct}%"></div>
@@ -881,43 +836,40 @@ function renderCourses(schedule, completions) {
     list.appendChild(card);
   });
 
-  /* Checkbox listeners */
   document.querySelectorAll('.course-check').forEach(cb => {
     cb.addEventListener('change', e => {
       const idx = parseInt(e.target.dataset.idx, 10);
       completions[idx] = e.target.checked ? Date.now() : null;
       saveCompletions(completions);
       fullRender(completions);
-      showToast(e.target.checked ? `Course ${idx + 1} marked complete` : `Course ${idx + 1} unchecked`);
+      showToast(e.target.checked ? `Course ${idx+1} marked complete` : `Course ${idx+1} unchecked`);
     });
   });
 }
 
 /* ----------------------------------------------------------------
-   TICK — every second, update all live timers without re-render
+   TICK — fires every minute.
+   Recomputes effectiveEnd − Date.now() fresh each time so the
+   value decreases by real elapsed time, not just at midnight.
+   Runs for ALL non-done courses so both active and upcoming
+   countdowns stay accurate (upcoming shows full window duration
+   which is static, active shows live remaining time).
    ---------------------------------------------------------------- */
-function tick(schedule) {
-  renderCumulative();
-
-  schedule.forEach((c, i) => {
+function tick() {
+  if (!_schedule) return;
+  _schedule.forEach((c, i) => {
     if (c.status === 'done') return;
-    /*
-      For the active course: effectiveStart is "today midnight",
-      so as seconds pass effectiveStart stays fixed and effectiveEnd
-      moves closer → countdown decreases correctly.
-      For upcoming courses: both stay fixed until the day they start,
-      at which point fullRender is called (hourly) which reanchors
-      effectiveStart to today.
-    */
-    const t  = windowLeft(c.effectiveStart.getTime(), c.effectiveEnd.getTime());
+    // Always recompute against current Date.now()
+    const ms = c.status === 'upcoming'
+      ? c.effectiveEnd.getTime() - c.effectiveStart.getTime()  // static duration
+      : c.effectiveEnd.getTime() - Date.now();                 // live remaining
+    const t = msToComponents(ms);
     const dEl = document.getElementById(`ccd-${i}-d`);
     const hEl = document.getElementById(`ccd-${i}-h`);
     const mEl = document.getElementById(`ccd-${i}-m`);
-    const sEl = document.getElementById(`ccd-${i}-s`);
     if (dEl) dEl.textContent = p2(t.days);
     if (hEl) hEl.textContent = p2(t.hours);
     if (mEl) mEl.textContent = p2(t.minutes);
-    if (sEl) sEl.textContent = p2(t.seconds);
   });
 }
 
@@ -927,7 +879,7 @@ function tick(schedule) {
 function saveHours() {
   const lang  = parseFloat(document.getElementById('langHours').value) || 0;
   const py    = parseFloat(document.getElementById('pyHours').value)   || 0;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0,10);
   const log   = loadLog();
   log[today]  = { lang, py };
   saveLog(log);
@@ -937,15 +889,13 @@ function saveHours() {
 }
 
 function renderSummary(log) {
-  const today = new Date().toISOString().slice(0, 10);
-  const e = log[today] || { lang: 0, py: 0 };
+  const today = new Date().toISOString().slice(0,10);
+  const e = log[today] || { lang:0, py:0 };
   document.getElementById('langHours').value = e.lang || '';
   document.getElementById('pyHours').value   = e.py   || '';
-
-  const tL = Object.values(log).reduce((s, x) => s + (x.lang || 0), 0);
-  const tP = Object.values(log).reduce((s, x) => s + (x.py   || 0), 0);
+  const tL = Object.values(log).reduce((s,x) => s+(x.lang||0), 0);
+  const tP = Object.values(log).reduce((s,x) => s+(x.py  ||0), 0);
   const d  = Object.keys(log).length;
-
   document.getElementById('summaryRow').innerHTML = `
     <div class="s-stat"><span class="s-val">${e.lang}h</span><span class="s-lbl">Language today</span></div>
     <div class="s-stat"><span class="s-val">${e.py}h</span><span class="s-lbl">Python today</span></div>
@@ -1002,25 +952,37 @@ function fullRender(completions) {
   fullRender(completions);
 
   const log = loadLog();
-  const dates = Object.keys(log).sort();
-  if (dates.length) {
-    document.getElementById('lastSaved').textContent = `Last logged: ${dates[dates.length - 1]}`;
+  const savedDates = Object.keys(log).sort();
+  if (savedDates.length) {
+    document.getElementById('lastSaved').textContent = `Last logged: ${savedDates[savedDates.length-1]}`;
   }
 
   document.getElementById('saveBtn').addEventListener('click', saveHours);
   document.getElementById('resetBtn').addEventListener('click', resetAll);
 
   let _as;
-  ['langHours', 'pyHours'].forEach(id =>
+  ['langHours','pyHours'].forEach(id =>
     document.getElementById(id).addEventListener('input', () => {
       clearTimeout(_as); _as = setTimeout(saveHours, 800);
     })
   );
 
-  // Tick every second
-  setInterval(() => { if (_schedule) tick(_schedule); }, 1000);
+  // Cumulative panel: ticks every second (shows d/h/m/s)
+  setInterval(() => renderCumulative(), 1000);
 
-  // Full re-render every hour (handles midnight date rollovers)
+  // Course countdowns: tick every minute, aligned to the real clock boundary.
+  // We calculate ms until the next whole minute, wait that long, fire once,
+  // then repeat every 60 000 ms exactly on the minute.
+  // tick() always reads _schedule fresh (module-level let) so it is never stale.
+  (function alignToMinute() {
+    const msToNext = 60_000 - (Date.now() % 60_000);
+    setTimeout(function fireAndRepeat() {
+      tick();                              // fire on exact minute turn
+      setInterval(tick, 60_000);          // then every 60 s
+    }, msToNext);
+  })();
+
+  // Full re-render every hour (recalculates schedule, handles midnight crossover)
   setInterval(() => fullRender(loadCompletions()), 3_600_000);
 })();
 </script>
